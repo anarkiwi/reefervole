@@ -1,0 +1,21 @@
+build/
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+htmlcov/
+sim_build/
+results.xml
+*.vcd
+*.fst
+*.bit
+*.svf
+*.config
+artifacts/
+*.egg-info/
+.tox/
+core
+core.*
+
+# Cached upstream reference material (not redistributable)
+vendor/

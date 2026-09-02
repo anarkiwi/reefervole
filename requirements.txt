@@ -1,0 +1,11 @@
+# Runtime and verification dependencies. Tracked by Dependabot.
+numpy==2.5.2
+cocotb==2.1.0
+cocotb-bus==0.3.0
+pytest==9.1.1
+pytest-xdist==3.8.0
+pytest-cov==7.1.0
+hypothesis==6.167.1
+scapy==2.7.0
+black==26.5.1
+pylint==4.0.8

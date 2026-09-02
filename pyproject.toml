@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "reefervole"
+version = "0.1.0"
+description = "Development framework for the Colorlight 5A-75B ECP5 board"
+requires-python = ">=3.12"
+license = "Apache-2.0"
+dependencies = ["numpy"]
+
+[tool.setuptools.packages.find]
+include = ["reefervole*"]
+
+[tool.black]
+target-version = ["py312"]
+line-length = 100
+
+[tool.pylint.main]
+# Gitignored scratch directories; not ours to lint.
+ignore = ["build", "artifacts", "vendor", ".hypothesis"]
+
+[tool.pylint.format]
+max-line-length = 100
+
+[tool.pylint."messages control"]
+disable = ["too-many-instance-attributes", "too-few-public-methods", "duplicate-code"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov=reefervole --cov-report=term-missing"
+filterwarnings = [
+    # migen's simulator inverts bools with ~; upstream, and one warning per simulated cycle.
+    "ignore:Bitwise inversion .~. on bool is deprecated:DeprecationWarning:migen.sim.core",
+]

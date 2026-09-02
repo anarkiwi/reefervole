@@ -1,0 +1,10 @@
+# LiteX family. Pinned to commits rather than PyPI releases: the PyPI snapshots lag the
+# tree by months and predate liteeth features this design depends on (RGMII in-band link
+# status and dynamic 10/100/1000 link handling in liteeth.phy.ecp5rgmii).
+# Refresh with `make update-litex`, which rewrites the SHAs below and reruns the tests.
+migen                    @ git+https://github.com/m-labs/migen@e19524c963a8342952840983047557707fbe0b6a
+litex                    @ git+https://github.com/enjoy-digital/litex@dc965addb7d83094f15705588224cf0e728df3ed
+liteeth                  @ git+https://github.com/enjoy-digital/liteeth@8c9150ff121cb3148d8ea26ce3b1c5200479848d
+litedram                 @ git+https://github.com/enjoy-digital/litedram@3cf585a60a37113f18a9f6c6f3ee774be521623e
+litex-boards             @ git+https://github.com/litex-hub/litex-boards@b8424ee7487281c29750c75ffee4532d56db5015
+pythondata-cpu-vexriscv  @ git+https://github.com/litex-hub/pythondata-cpu-vexriscv@642ecfed1c84460555d6d803d660cc60cfc1ecb6
