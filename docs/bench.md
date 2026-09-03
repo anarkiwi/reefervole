@@ -296,6 +296,46 @@ sudo ip netns del bsw-a; sudo ip netns del bsw-b
 
 Do not put the board in a path carrying traffic you care about.
 
+### 6.1 The NICs must be gigabit, on four pairs
+
+The board's PHYs advertise 1000BASE-T full duplex and nothing else
+([`rtl8211f.md`](rtl8211f.md) §8.10). A NIC advertising only 10/100, or a two-pair patch
+cable, does not link *slowly* — it does not link at all, and the port looks exactly as it
+does with nothing plugged in. Check `ethtool <nic> | grep Advertised` before blaming the
+gateware, and remember that a NIC will not advertise gigabit if its own driver has clamped
+it. Forcing a low speed with `ethtool -s ... speed 10` is worse than useless here: it
+guarantees no link.
+
+### 6.2 Telling a rig fault from a board fault
+
+Three readings separate them, in the order worth taking:
+
+| Reading | Where | Says |
+| --- | --- | --- |
+| `/sys/class/net/<nic>/operstate` | host | **Read this first.** A NIC that is administratively down reports *no* carrier at all — `carrier` is unreadable, not `0` — so "no carrier" proves nothing until the interface is up |
+| `/sys/class/net/<nic>/carrier_changes` | host | Whether a cable swap actually landed on the link you think it did. Replace a cable and this must increment; if it does not, that cable is not carrying that link |
+| `LPA` (5) and `ANER` (6) bit 0 | board, over MDIO | Ground truth for what is plugged into the *board*. Both stay zero until a partner's link pulses arrive, whatever the NIC end believes |
+
+The trap is that a NIC can hold a perfectly good link to something that is not the board —
+another port, a switch, a second board — while the board's ports see nothing. The host-side
+view alone cannot tell those apart; `LPA` can.
+
+### 6.3 Driving the rig from a container
+
+The namespaces need `CAP_NET_ADMIN` and the host's network namespace, and the physical
+interfaces return to the host when the namespaces are deleted, so a single container that
+lives as long as the test is the whole story:
+
+```sh
+docker run -d --name rig --net=host --privileged -v "$PWD:/rv" alpine:3 \
+  sh -c 'apk add -q iproute2 iputils iperf3; sh /rv/tools/bench_netns.sh up nic-a nic-b; sleep 3600'
+docker exec rig sh /rv/tools/bench_netns.sh ping
+docker exec rig sh /rv/tools/bench_netns.sh down && docker rm -f rig
+```
+
+Run `down` before removing the container. Killing it also frees the namespaces and returns
+the interfaces, but leaves nothing to read if the test was still running.
+
 ## 7. Host software
 
 ```sh
