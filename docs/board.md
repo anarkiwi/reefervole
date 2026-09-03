@@ -131,6 +131,21 @@ LiteEthPHYRGMII(clock_pads, pads, with_hw_init_reset=False, tx_delay=0, rx_delay
 | `RXDLY` = 1 | `rx_delay` | 0, trim upward in single taps if the RX eye needs it |
 | `RXDLY` = 0 | `rx_delay` | 2.0 ns (80 taps) |
 
+Measured on a rev 8.2 board, both PHYs: `0xd08:0x11 = 0x0d09` so `TXDLY` = 1, and
+`0xd08:0x15 = 0x0819` so `RXDLY` = 1. Both delays are therefore strapped **on in the PHY**,
+and the FPGA must add neither — `tx_delay = rx_delay = 0`. LiteEth's `2 ns` defaults are
+wrong for this board in the worst direction, since they would double a delay the PHY already
+applies. Straps are board resistors rather than a property of the part, so re-read them on
+any new board rather than trusting this figure.
+
+Two more measurements from the same board, worth knowing before they surprise you:
+
+| Reading | Measured | Note |
+| --- | --- | --- |
+| PHY addresses | 1 and 2 | Only addresses 3 and 5 would separate the two published `PHYAD[1]`/`PHYAD[2]` mappings, so this board cannot arbitrate that dispute. Nothing depends on it: scan for addresses, never compute them |
+| PHY identifier | `0x001c.c858` | Not the `0x001c.c916` the datasheet gives, though the part behaves exactly as its register map predicts. Match on the OUI, not the full identifier |
+| `clk25` on `P6` | 24.9485 MHz | While `PHYCR2` bit 11 reads 1, which the datasheet calls 125 MHz. The measurement wins; treat that datasheet default as wrong |
+
 * **Two instances need renaming.** Wrap each in
   `ClockDomainsRenamer({"eth_rx": "ethN_rx", "eth_tx": "ethN_tx"})`; upstream LiteX only
   ever instantiates one PHY on this board.
