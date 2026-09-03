@@ -152,11 +152,23 @@ Two more measurements from the same board, worth knowing before they surprise yo
 * **Two instances need renaming.** Wrap each in
   `ClockDomainsRenamer({"eth_rx": "ethN_rx", "eth_tx": "ethN_tx"})`; upstream LiteX only
   ever instantiates one PHY on this board.
-* **`with_inband_status` is unverified on the `RTL8211FP`.** The default decodes RGMII
-  v2.0 in-band status from `rx_data[3:0]` while `rx_ctl == 0b00`; the Realtek datasheet
-  never mentions in-band status at all. Cross-check the `inband_status` CSR against
-  `PHYSR` (register 26) on a link known to be up at a known speed. The fallback is
-  `with_inband_status=False` plus MDIO polling, which costs only latency on link change.
+* **`with_inband_status` works on the `RTL8211FP`, measured.** The default decodes RGMII
+  v2.0 in-band status from `rx_data[3:0]` while `rx_ctl == 0b00`, and the Realtek datasheet
+  never mentions in-band status at all — but on a rev 8.2 board with both ports linked, the
+  `inband_status` CSR read `0x0d` on each: link up, `clock_speed = 0b10`, full duplex. MDIO
+  agreed on the same board at the same moment (`BMSR` autoneg-complete set, `LPA = 0xc5e1`,
+  `GBSR` showing a 1000-full partner), as did the host NICs' own view of the link. Trust it;
+  the fallback is `with_inband_status=False` plus MDIO polling, which costs only latency.
+* **`with_dynamic_link=True` follows the negotiated speed.** It requires in-band status, so
+  the reading above is what licenses it. Without it the datapath assumes 1000BASE-T and
+  samples nibbles that are not there whenever the link comes up at 10 or 100.
+* **Give `LiteEthMACCore` `with_sys_datapath=True`.** With the default, padding, CRC and
+  preamble sit in the PHY-recovered clock domain, and the ready chain running back from the
+  TX CDC through them is the domain's critical path: with two ports on the `-25` part it
+  measured **106 MHz against the 125 MHz gigabit requirement**. Moving those stages into the
+  core clock leaves the PHY-clocked domain only the width converter and the inter-frame gap,
+  and both ports then made **131 and 135 MHz**. It is not an optimisation on this part; it
+  is the difference between closing and not closing.
 
 ## 5. `litex-boards` rev 6.1 second port is mis-pinned
 
@@ -182,6 +194,20 @@ One PLL from the 25 MHz reference, VCO at 750 MHz:
 
 The second PLL is spare. **System reset must be held by PLL lock**, because on rev 8.x
 `clk25` does not exist until PHY1 starts.
+
+**Do not add your own `AsyncResetSynchronizer` for a PLL-derived domain.**
+`ECP5PLL.create_clkout` already installs one per domain, gated on `~locked`, so writing the
+obvious
+
+```python
+self.specials += AsyncResetSynchronizer(self.cd_sys, ~pll.locked)   # already done for you
+```
+
+puts a second driver on `sys_rst`. yosys reports that as `ERROR: Visited AIG node more than
+once; this could be a combinatorial loop that has not been broken`, from the XAIGER backend,
+naming nothing — a long way from the two lines that caused it. `scc` finds nothing, because
+the conflict only appears once the flip-flops are mapped; the diagnosis is
+`synth_ecp5 -run :map_luts`, which prints `multiple conflicting drivers for ...\sys_rst`.
 
 MDC is derived from `sys`: the `RTL8211F` wants MDC ≥ 80 ns period (≤ 12.5 MHz) with
 ≥ 32 ns pulses and up to 300 ns MDIO read-valid time. Divide-by-8 from 62.5 MHz
