@@ -92,19 +92,19 @@ fourth CI job that builds the image.
 
 | Target | Command | Gate |
 | --- | --- | --- |
-| `docs` | `python3 tools/check_docs.py` | Every relative Markdown link in a git-tracked `.md` resolves. Only tracked files are checked: cached upstream material under gitignored paths is not ours to validate |
+| `docs` | `python3 -m reefervole.checkdocs` | Every relative Markdown link in a git-tracked `.md` resolves. Only tracked files are checked: cached upstream material under gitignored paths is not ours to validate |
 | `lint` | `black --check .`; `pylint --recursive=y .` | Line length 100, Python 3.12 target. `--ignore` is set in `pyproject.toml`, not on the command line, where it would replace the list rather than extend it |
 | `test` | `pytest -n auto --cov-fail-under=85` | Coverage measured on `reefervole` only. `OPENBLAS_NUM_THREADS=1` and `OMP_NUM_THREADS=1` are exported by the Makefile: numpy spawns a thread pool per xdist worker, which exhausts pthread limits on a many-core host |
 
 ## 5. Measuring a block's real cost
 
-A fabric budget is an estimate until yosys has seen the block. `tools/synth_probe.py`
+A fabric budget is an estimate until yosys has seen the block. `-m reefervole.synth`
 elaborates one migen module, converts it to Verilog, runs `synth_ecp5` and reports the
 cells:
 
 ```sh
 docker run --rm -v "$PWD:/work" reefervole \
-  python3 tools/synth_probe.py reefervole.gateware.buffer:PacketBuffer depth=2048
+  python3 -m reefervole.synth reefervole.gateware.buffer:PacketBuffer depth=2048
 ```
 
 `module.path:ClassName` plus `name=value` constructor arguments, parsed with
@@ -156,7 +156,7 @@ Depth is nearly free until it crosses 1024; width is what costs. Check the real 
 
 | Job | Runs |
 | --- | --- |
-| `docs` | `tools/check_docs.py`, no dependencies installed |
+| `docs` | `reefervole.checkdocs`, no dependencies installed |
 | `lint` | `black --check`, `pylint --recursive=y --ignore=build` |
 | `test` | `pytest -n auto --cov-fail-under=85` with the thread-pool limits set |
 | `toolchain` | `docker build` of the image, GitHub Actions layer cache in and out, no push |

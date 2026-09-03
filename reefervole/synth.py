@@ -3,7 +3,7 @@
 The design's fabric budget in docs/design.md is an estimate until each block is put
 through yosys. Usage:
 
-    python3 tools/synth_probe.py reefervole.gateware.buffer:PacketBuffer depth=2048
+    python3 -m reefervole.synth reefervole.gateware.buffer:PacketBuffer depth=2048
 """
 
 from __future__ import annotations

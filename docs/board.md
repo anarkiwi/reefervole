@@ -41,7 +41,7 @@ PHY and the clock source all depend on it.
 | PLL / DLL | 2 / 2 |
 
 A `CCU2C` carry cell occupies both LUT4s of a slice, so LUT4-equivalent counts weight it
-as two. `tools/synth_probe.py` reports both.
+as two. `-m reefervole.synth` reports both.
 
 [^80]: Rev 8.0's part is taken from `litex-boards`, not from a board in hand — the
     reverse-engineering sources document 6.1, 7.0 and 8.2 explicitly. Confirm against the

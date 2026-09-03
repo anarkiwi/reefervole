@@ -1,4 +1,4 @@
-"""Verify that relative Markdown links in the repository's own docs resolve.
+"""Verify that relative Markdown links resolve, in whichever repository invokes this.
 
 Only git-tracked files are checked: cached upstream material under gitignored paths is
 not ours to validate.
@@ -29,7 +29,7 @@ def tracked_markdown(root: pathlib.Path) -> list[pathlib.Path]:
 
 def main() -> int:
     """Return 1 if any relative link is broken, else 0."""
-    root = pathlib.Path(__file__).resolve().parent.parent
+    root = pathlib.Path.cwd()
     broken = [
         (doc, target)
         for doc in tracked_markdown(root)

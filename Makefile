@@ -8,7 +8,7 @@ LITEX_REPOS := m-labs/migen enjoy-digital/litex enjoy-digital/liteeth \
 check: docs lint test
 
 docs:
-	$(PYTHON) tools/check_docs.py
+	$(PYTHON) -m reefervole.checkdocs
 
 lint:
 	black --check .

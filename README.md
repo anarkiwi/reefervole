@@ -44,8 +44,8 @@ limit is 5.5 V and a 12 V LED-panel supply destroys it immediately.
 | --- | --- |
 | `reefervole/gateware/` | Migen gateware: reusable blocks and the reference application |
 | `reefervole/model/` | Python reference models, authoritative for gateware behaviour |
-| `tools/check_docs.py` | Markdown link checker |
-| `tools/synth_probe.py` | Real ECP5 cell cost of one module, via yosys `synth_ecp5` |
+| `reefervole.checkdocs` | Markdown link checker |
+| `-m reefervole.synth` | Real ECP5 cell cost of one module, via yosys `synth_ecp5` |
 | `tools/bench_check.py` | One-shot probe of a bench rig; standard library only |
 | `tools/phy_probe.py` | Read-only MDIO scan, RGMII delay straps and `clk25`, over jtagbone |
 | `tools/bench_netns.sh` | Two-namespace NIC test rig, setup and complete undo |
