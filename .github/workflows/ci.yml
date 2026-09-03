@@ -13,6 +13,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+      - run: pip install -e . --no-deps
       - run: python -m reefervole.checkdocs
 
   lint:
@@ -22,9 +23,9 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - run: pip install black==26.5.1 pylint==4.0.8 -r requirements-gateware.txt -e .
+      - run: pip install -r requirements.txt -r requirements-gateware.txt -e .
       - run: black --check .
-      - run: pylint --recursive=y --ignore=build .
+      - run: pylint --recursive=y .
 
   test:
     runs-on: ubuntu-latest
