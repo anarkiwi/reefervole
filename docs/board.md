@@ -138,6 +138,9 @@ wrong for this board in the worst direction, since they would double a delay the
 applies. Straps are board resistors rather than a property of the part, so re-read them on
 any new board rather than trusting this figure.
 
+The full register-level reference, with its datasheet citations and the readings that
+contradict them, is [`rtl8211f.md`](rtl8211f.md).
+
 Two more measurements from the same board, worth knowing before they surprise you:
 
 | Reading | Measured | Note |

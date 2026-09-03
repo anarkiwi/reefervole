@@ -171,7 +171,9 @@ def main() -> int:
         ("jtag chain", "1a", lambda: probe_jtag(args.cable)),
         ("nic pair", "1b", probe_nics),
     )
-    print(f"reefervole bench check  ({os.uname().sysname} {os.uname().release}, cable={args.cable})")
+    print(
+        f"reefervole bench check  ({os.uname().sysname} {os.uname().release}, cable={args.cable})"
+    )
     blocked = set()
     for name, phase, probe in probes:
         ok, detail = probe()
