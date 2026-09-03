@@ -29,6 +29,8 @@ disable = ["too-many-instance-attributes", "too-few-public-methods", "duplicate-
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# tools/ holds host-side scripts, not an installed package.
+pythonpath = ["tools"]
 addopts = "--cov=reefervole --cov-report=term-missing"
 filterwarnings = [
     # migen's simulator inverts bools with ~; upstream, and one warning per simulated cycle.
