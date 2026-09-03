@@ -1,4 +1,4 @@
-"""Simulation-only workaround for a migen defect.
+"""Simulation helpers, importable by any project building on this framework.
 
 Not a conftest: pytest's default import mode registers every ``conftest.py`` under the
 bare name ``conftest``, so a second one here would shadow ``tests/conftest.py`` and make

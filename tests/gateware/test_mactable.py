@@ -6,7 +6,7 @@ import pytest
 from migen.sim import run_simulation
 
 from ethframes import unicast
-from simshim import patch_write_only_memory_ports
+from reefervole.sim import patch_write_only_memory_ports
 from reefervole.model.switch import Counters, MacTable as ModelTable, mac_int
 
 patch_write_only_memory_ports()

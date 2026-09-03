@@ -32,7 +32,7 @@ Everything upstream is used as-is — `LiteEthPHYRGMII`, `LiteEthMACCore`,
 **Two simulators, on purpose.** Migen's native simulator runs pure-Python generator
 testbenches against migen modules with no compile step, which is what makes per-block unit
 tests fast enough to run under `pytest -n auto`. Verilator plus cocotb is for whole-design
-tests where the Verilog is what you want to exercise. `tests/gateware/simshim.py` carries
+tests where the Verilog is what you want to exercise. `reefervole/sim.py` carries
 the one workaround the native simulator needs: `migen/fhdl/simplify.py` emits read
 statements for a memory port without checking `port.dat_r is None`, while
 `genlib.fifo.SyncFIFO` creates its write port with `read_capable=False`, so any design

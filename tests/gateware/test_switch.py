@@ -9,7 +9,7 @@ import random
 from migen.sim import run_simulation
 
 from ethframes import BROADCAST, ETHERTYPE, MULTICAST, collect, feed, frame, unicast, watch_ready
-from simshim import patch_write_only_memory_ports
+from reefervole.sim import patch_write_only_memory_ports
 from reefervole.model.switch import LearningSwitch as SwitchModel
 
 patch_write_only_memory_ports()
