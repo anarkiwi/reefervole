@@ -320,7 +320,22 @@ The trap is that a NIC can hold a perfectly good link to something that is not t
 another port, a switch, a second board — while the board's ports see nothing. The host-side
 view alone cannot tell those apart; `LPA` can.
 
-### 6.3 Driving the rig from a container
+### 6.3 A loose JTAG cable reads as zero, not as an error
+
+A marginal FT232H connection does not fail the CSR read. It returns **zero**, so every
+counter reads 0, `inband_status` reads `0x00`, and a design that is forwarding traffic
+perfectly well looks dead. The tell is a contradiction: traffic passing end to end while the
+board claims it has seen no frames. Distrust the reads, not the design.
+
+The cheap check is an MDIO page round-trip, which has a value that cannot be confused with
+silence: write `0xa43` to register 31, read it back, restore `0`. If the readback tracks the
+write, the bus is live. `openFPGALoader -c ft232 --detect` also fails outright on a bad
+cable, where a CSR read does not.
+
+Re-seating the cable re-enumerates the FT232H at a new USB device number, which matters if
+anything is holding an old one — see §6.4.
+
+### 6.4 Driving the rig from a container
 
 The namespaces need `CAP_NET_ADMIN` and the host's network namespace, and the physical
 interfaces return to the host when the namespaces are deleted, so a single container that
@@ -335,6 +350,23 @@ docker exec rig sh /rv/tools/bench_netns.sh down && docker rm -f rig
 
 Run `down` before removing the container. Killing it also frees the namespaces and returns
 the interfaces, but leaves nothing to read if the test was still running.
+
+The JTAG side needs its own container, and needs `/dev/bus/usb` mounted **live**. A
+container started with a snapshot of it keeps working until the FT232H re-enumerates — after
+a re-seat, a power cycle or a hub change — and then libusb fails with
+`LIBUSB_ERROR_NO_DEVICE` while `lsusb` still lists the device, because `lsusb` reads `/sys`
+and libusb needs the character node that is no longer there. Run the bridge and whatever
+reads CSRs together, in one container, off the live mount:
+
+```sh
+docker run --rm --privileged -v /dev/bus/usb:/dev/bus/usb -v "$PWD:/work" reefervole sh -c '
+  python3 tools/jtagbone_server.py >/dev/null 2>&1 &
+  sleep 12
+  python3 your_probe.py --csr-csv build/<name>/csr.csv'
+```
+
+`openFPGALoader` and the bridge both want the FT232H exclusively, so load the bitstream
+before starting the bridge, in a separate invocation.
 
 ## 7. Host software
 
