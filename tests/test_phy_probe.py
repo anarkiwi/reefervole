@@ -206,12 +206,28 @@ def test_page_select_write_round_trips(bus):
     assert mdio.read(1, 31) == 0xD08
 
 
-@pytest.mark.parametrize("reg, name", [(0, "BMCR"), (24, "PHYCR1"), (25, "PHYCR2")])
-def test_write_is_refused_before_any_edge(bus, reg, name):
-    """The clock-critical registers are refused inside the write primitive."""
+@pytest.mark.parametrize(
+    "reg, name, value",
+    [
+        (0, "BMCR", 0x9040),
+        (0, "BMCR", 0x1240),
+        (0, "BMCR", 0x1840),
+        (24, "PHYCR1", 0x011E),
+        (25, "PHYCR2", 0x0840),
+    ],
+)
+def test_write_is_refused_before_any_write_frame(bus, reg, name, value):
+    """Reset, restart-AN, power-down, ALDPS and the CLKOUT gate never reach the slave."""
     with pytest.raises(MDIOWriteRefused, match=name):
-        MDIOBus(bus).write(1, reg, 0)
-    assert bus.edges == 0
+        MDIOBus(bus).write(1, reg, value)
+    assert bus.slaves[0].written == []
+
+
+@pytest.mark.parametrize("reg, value", [(0, 0x1440), (0, 0x1040), (25, 0x0841)])
+def test_a_write_leaving_the_protected_bits_alone_is_permitted(bus, reg, value):
+    """BMCR isolate leaves CLKOUT running (docs/rtl8211f.md 8.7), so the guard allows it."""
+    MDIOBus(bus).write(1, reg, value)
+    assert bus.slaves[0].written == [(0, reg, value)]
 
 
 def test_scan_finds_exactly_the_strapped_pair(bus):

@@ -1,8 +1,8 @@
 """Host-side board probe: MDIO scan, RGMII delay straps and clk25, over jtagbone.
 
 Talks to the gateware built by ``reefervole.gateware.diagnostics`` through
-``litex_server --jtag``. Read-only against the PHYs, because on this board PHY1 clocks the
-whole FPGA; see _FORBIDDEN and _BRINGUP, which --help prints along with the exact
+``litex_server --jtag``. This probe itself only reads, because on this board PHY1 clocks
+the whole FPGA; see _FORBIDDEN_BITS and _BRINGUP, which --help prints along with the exact
 litex_server invocation and OpenOCD config the bridge needs.
 """
 
@@ -41,13 +41,17 @@ bit left, which only shows on a register whose top bit is set -- here PHYID2, wh
 reads 0xffff and makes a live bus look empty.
 
 Safety. Rev 8.x shares PHYRSTB across both PHYs and takes the FPGA's 25 MHz from PHY1, so
-a reset, isolate, power-down, CLKOUT gate or ALDPS write stops the design until the board
-is power cycled. Registers 0, 24 and 25 hold all of those bits, so the guard lives inside
-MDIOBus.write(), before any MDC edge, rather than at call sites where a later edit would
-forget it. Only register 31, the page select, is ever written, and always restored.\
+a reset, power-down, CLKOUT gate or ALDPS write stops the design until the board is power
+cycled. Those bits live in registers 0, 24 and 25, so the guard lives inside
+MDIOBus.write(), before any write frame, rather than at call sites where a later edit would
+forget it. The guard is per bit, not per register: BMCR bit 10 (isolate) is measured to
+leave CLKOUT running (docs/rtl8211f.md section 8.7) and is writable, while bits 15, 11 and
+the unmeasured 9 of that same register are not. This probe itself writes only register 31,
+the page select, and always restores it.\
 """
 
-_FORBIDDEN = {0: "BMCR", 24: "PHYCR1", 25: "PHYCR2"}
+#: Clock-critical bits, per register; BMCR 10 (isolate) is absent by measurement.
+_FORBIDDEN_BITS = {0: (0x8A00, "BMCR"), 24: (0x1006, "PHYCR1"), 25: (0x0801, "PHYCR2")}
 
 _PAGE_SELECT = 31
 _PAGE_RGMII = 0xD08
@@ -128,11 +132,21 @@ class MDIOBus:
         return 0xFFFF if turnaround else value
 
     def write(self, phy, reg, value):
-        """Clause-22 write, refused structurally for the clock-critical registers."""
-        if reg in _FORBIDDEN:
+        """Clause-22 write, refused structurally if it would disturb a clock-critical bit.
+
+        The guard compares the proposed value against what the register currently holds
+        rather than demanding zeroes, because the safe value is not the same for every
+        protected bit: BMCR's reset and power-down are safe only as 0, while PHYCR2's
+        CLKOUT enable is safe only as the 1 the board came up with. "Leave these bits
+        exactly as they are" is the rule that is right for both, and the extra read is a
+        cheap price for a guard that a plausible-looking constant cannot defeat.
+        """
+        mask, name = _FORBIDDEN_BITS.get(reg, (0, ""))
+        if mask and (value ^ self.read(phy, reg)) & mask:
             raise MDIOWriteRefused(
-                f"refusing to write PHY {phy} register {reg} ({_FORBIDDEN[reg]}): its bits "
-                "reset, isolate, power down or gate the CLKOUT that clocks this FPGA"
+                f"refusing to write 0x{value:04x} to PHY {phy} register {reg} ({name}): it "
+                f"changes bits 0x{mask:04x}, which reset, power down or gate the CLKOUT that "
+                "clocks this FPGA"
             )
         self._frame(0b01, phy, reg)
         self._out(0b10, 2)

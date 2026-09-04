@@ -74,14 +74,23 @@ a lockout, not damage — but nothing short of a power cycle recovers it.
 | No BMCR bit 11 (power-down) on either PHY | Powers down the analog block containing the PLL |
 | No `PHYCR1` bits 12, 2 or 1 on PHY1 | Enables ALDPS: with the `PLLOFF` strap set, the PLL stops when the cable is unplugged |
 | Treat `PHYCR2` on PHY1 as read-only | Bit 0 gates `CLKOUT`, bit 11 selects its frequency |
-| Disable a port with BMCR bit 10 (isolate) | The only documented way to quiesce a port that leaves `CLKOUT` running |
+| Disable a port with BMCR bit 10 (isolate) | Measured: it leaves `CLKOUT` running on both PHYs, PHY1 included, and clearing the bit undoes it |
 
-Isolate has its own consequence: it drives `RXC` high-impedance, so **that port's RX clock
-domain stops**. Every crossing out of it must tolerate a stopped clock rather than a
-merely slow one, and the isolated port's RX-side logic must be held in reset rather than
-assumed to be ticking. (The datasheet enumerates which pins go high-impedance under
-isolate and `CLKOUT` is not among them — an argument from omission, so verify it on a
-spare board before relying on it.)
+Isolate is safe for the board, and that is now a bench measurement rather than an inference
+from the datasheet's silence: `P6` held 25.0 MHz with bit 10 set on PHY1 — the PHY that
+generates it — for over thirty seconds, and clearing the bit restored the port with no power
+cycle ([`rtl8211f.md`](rtl8211f.md) §8.7). On any new board do it the first time from a
+bitstream clocked by `OSCG` rather than by `clk25`, so that a wrong answer leaves jtagbone
+alive and the same MDIO write can undo it.
+
+It is not free for the design. It drives `RXC` high-impedance, so **that port's RX clock
+domain stops**. Every crossing out of it must tolerate a stopped clock rather than a merely
+slow one, and the isolated port's RX-side logic must be held in reset rather than assumed to
+be ticking — measured, a datapath that assumed otherwise latched a fault on the *opposite*
+direction under traffic and stayed closed until the bitstream was reloaded. Two more
+consequences to design around: the line side stays up, so neither MDIO nor the link partner
+can tell you a port is isolated; and `inband_status` **freezes** at its last decoded value
+rather than falling, so an isolated port goes on reading `0x0d` for as long as you poll it.
 
 ### 3.3 The PHY's RX pins carry its configuration straps
 
@@ -146,6 +155,7 @@ Two more measurements from the same board, worth knowing before they surprise yo
 | Reading | Measured | Note |
 | --- | --- | --- |
 | PHY addresses | 1 and 2 | Only addresses 3 and 5 would separate the two published `PHYAD[1]`/`PHYAD[2]` mappings, so this board cannot arbitrate that dispute. Nothing depends on it: scan for addresses, never compute them |
+| Which address is which PHY | 2 is `eth:1`, i.e. PHY1 and the `CLKOUT` source; 1 is `eth:0` | No register says so. Take one bench NIC administratively down and watch which address loses `LPA` and which `ethphyN` loses `inband_status`: they fall together ([`rtl8211f.md`](rtl8211f.md) §8.11). Worth doing before any write to a PHY, since PHY1 is the one to touch last |
 | PHY identifier | `0x001c.c858` | Not the `0x001c.c916` the datasheet gives, though the part behaves exactly as its register map predicts. Match on the OUI, not the full identifier |
 | `clk25` on `P6` | 24.9485 MHz | While `PHYCR2` bit 11 reads 1, which the datasheet calls 125 MHz. The measurement wins; treat that datasheet default as wrong |
 
@@ -159,6 +169,10 @@ Two more measurements from the same board, worth knowing before they surprise yo
   agreed on the same board at the same moment (`BMSR` autoneg-complete set, `LPA = 0xc5e1`,
   `GBSR` showing a 1000-full partner), as did the host NICs' own view of the link. Trust it;
   the fallback is `with_inband_status=False` plus MDIO polling, which costs only latency.
+  **It is decoded, not latched-on-loss**: the decoder lives in the PHY-recovered RX domain,
+  so when that clock stops the CSR keeps returning its last value. Unplug the cable and it
+  falls, because the PHY keeps clocking `RXC`; isolate the port (§3.2) and it does not. Read
+  it as "what the PHY last told us", never as a liveness check.
 * **`with_dynamic_link=True` follows the negotiated speed.** It requires in-band status, so
   the reading above is what licenses it. Without it the datapath assumes 1000BASE-T and
   samples nibbles that are not there whenever the link comes up at 10 or 100.
@@ -221,3 +235,20 @@ signals on the J19 header, and each has a second job: `DATA_LED-` drives the sta
 `KEY+` is the button net. Using them as a console makes the LED useless as an indicator
 and the button unusable as an input, and it needs a series resistor to survive a button
 press. See [`bench.md`](bench.md) §5.
+
+What is measured on a rev 8.2 board, from a gateware that owns `T6` and `R7` as tristates
+and does nothing else:
+
+| Reading | Measured | Says |
+| --- | --- | --- |
+| Both pins, released, `PULLMODE=NONE` | 1 and 1 | Both nets carry an external pull-up; neither pin is unconnected |
+| Each pin driven low in turn | self 0, other 1 | Two independent nets, both drivable from the FPGA |
+| Rise after release, 64 samples, 9.709 ns cycles | `T6` = 2 cycles, `R7` = 3, no variance | Two of those cycles are the input synchroniser and cancel, so **`R7`'s pull-up is the weaker of the two** — the direction expected if `R7` is `KEY+`'s 10 kΩ and `T6` the LED's much smaller series resistance |
+| Both again with `PULLMODE=DOWN` | unchanged | Both external pull-ups beat the ECP5's internal pull-down comfortably |
+| Sticky low-detect, 600 s idle | neither pin ever went low | The nets are quiet at rest. Whatever the button and the LED cost the console, spontaneous noise on RX is not one of them |
+
+That is consistent with the pinout above and rules out a swapped or dead pin, but it does
+not by itself prove which net is which: the two decisive observations are physical. Hold
+`T6` low and the status LED should light; press the button and `R7` alone should go low.
+Neither had been done when this was written, nor had any console round trip — see
+[`bench.md`](bench.md) §5 for what that costs and how to close it.
