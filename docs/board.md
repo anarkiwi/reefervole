@@ -245,6 +245,7 @@ and does nothing else:
 | Each pin driven low in turn | self 0, other 1 | Two independent nets, both drivable from the FPGA |
 | Rise after release, 64 samples, 9.709 ns cycles | `T6` = 2 cycles, `R7` = 3, no variance | Two of those cycles are the input synchroniser and cancel, so **`R7`'s pull-up is the weaker of the two** — the direction expected if `R7` is `KEY+`'s 10 kΩ and `T6` the LED's much smaller series resistance |
 | Both again with `PULLMODE=DOWN` | unchanged | Both external pull-ups beat the ECP5's internal pull-down comfortably |
+| Sticky low-detect, 600 s idle | neither pin ever went low | The nets are quiet at rest. Whatever the button and the LED cost the console, spontaneous noise on RX is not one of them |
 
 That is consistent with the pinout above and rules out a swapped or dead pin, but it does
 not by itself prove which net is which: the two decisive observations are physical. Hold
