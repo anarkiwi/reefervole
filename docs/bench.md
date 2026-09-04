@@ -177,6 +177,14 @@ with the status LED and the button:
 | `KEY+` | R7 | M13 | R16 | host → board | TXD, **through ~470 Ω** |
 | GND | — | — | — | — | GND |
 
+The rev 8.x row is what `litex_boards` puts in `serial` for both 8.0 and 8.2 — `tx` `T6`
+"led (J19 DATA_LED-)", `rx` `R7` "btn (J19 KEY+)" — and it is not contradicted by anything
+measured on the board: with the ECP5's own pull-ups off, both pins idle high, drive low
+independently, and differ in pull-up strength in the direction the LED-versus-10 kΩ topology
+predicts ([`board.md`](board.md) §7). **What has never been done is a console round trip.**
+Until one is, treat the direction and the workable baud rates as unverified: gateware built
+from that table has never had a character through it.
+
 ```
    USB-UART (3.3 V)                board J19 / rev 8.2 pins
    +----------+                    +-----------------------------+
@@ -211,6 +219,29 @@ Use the stable path, not `/dev/ttyUSB0`, which moves on replug:
 ```
 picocom -b 115200 /dev/serial/by-id/usb-Silicon_Labs_CP2102_...-if00-port0
 ```
+
+### 5a. The console adapter is not optional, and the FT232H cannot stand in for it
+
+A bench with a soldered FT232H and no second adapter can do everything in §5b and §6 and
+still not answer one question about J19, because there is nothing on the other end of those
+two pins. That is worth stating plainly, because the JTAG side working makes the rig look
+complete: `openFPGALoader --scan-usb` lists a `0403:6014`, `/dev/ttyUSB0` appears when
+`ftdi_sio` binds it, and neither means a console exists. The FT232H's UART and its MPSSE
+JTAG are exclusive modes of one channel (§4), and on a wired rig that channel is on J27–J34,
+not J19.
+
+Without an adapter, gateware can still prove some of J19 — that both pins exist, are
+independently drivable, and carry external pull-ups of the expected relative strength
+([`board.md`](board.md) §7) — and the board's own LED and button close the rest by eye:
+
+```sh
+# TX: hold T6 low and the status LED should light. RX: press the button and R7 alone
+# should go low, which a sticky latch catches without anyone watching the register.
+```
+
+Those two 30-second checks and one loopback at 115200 are the difference between a pinout
+copied from `litex_boards` and a console known to work. Do them before writing firmware that
+prints.
 
 ## 5b. Before the Ethernet adapters arrive
 
@@ -296,6 +327,22 @@ sudo ip netns del bsw-a; sudo ip netns del bsw-b
 
 Do not put the board in a path carrying traffic you care about.
 
+### 6.0 What a healthy bidirectional run looks like, and what skews it
+
+Two USB3 gigabit NICs either side of a forwarding bitstream, `iperf3 -t 30 --bidir`, measured
+on an otherwise idle host: **865 and 880 Mbit/s**, with the board's own counters showing
+2 646 338 and 2 606 931 frames, no drops, no faults, and
+`frames_rx − frames_dropped = frames_committed` exactly on both ports.
+
+The same rig, the same bitstream, twenty minutes earlier: **696 and 754 Mbit/s**, 78 and 71
+TCP retransmits — and the board still showing zero drops. The difference was a `pytest -n
+auto` on the same host taking all 22 cores; the loss was `rx_dropped` on the NICs (79 and
+81, matching the retransmits), not anything the board did. **An AX88179 pair is CPU-bound
+enough that host load is a first-class confounder in this measurement.** Check the load
+average before believing a throughput regression, and read the board's counters before
+blaming the gateware: `frames_rx` climbing with `frames_dropped` flat says the board
+forwarded everything it was given, and the shortfall is upstream of it.
+
 ### 6.1 The NICs must be gigabit, on four pairs
 
 The board's PHYs advertise 1000BASE-T full duplex and nothing else
@@ -319,6 +366,16 @@ Three readings separate them, in the order worth taking:
 The trap is that a NIC can hold a perfectly good link to something that is not the board —
 another port, a switch, a second board — while the board's ports see nothing. The host-side
 view alone cannot tell those apart; `LPA` can.
+
+Turn that around and it also names the ports. Taking one bench NIC administratively down and
+re-reading both PHYs shows exactly one of them lose `LPA` and `ANER` bit 0, and exactly one
+`ethphyN` lose `inband_status`, and those two are the same device — which is the only way to
+learn which MDIO address is which PHY, and so which one sources the FPGA's clock
+([`rtl8211f.md`](rtl8211f.md) §8.11). Do it before writing to any PHY register.
+
+Bringing a namespaced interface down also flushes its IPv6 addresses, so re-add the address
+after bringing it back up or the next `ping` fails with `Network unreachable` and looks like
+a board fault.
 
 ### 6.3 A loose JTAG cable reads as zero, not as an error
 
@@ -409,6 +466,12 @@ off the silkscreen ([`board.md`](board.md) §1).
 ```sh
 openFPGALoader -b colorlight -c ft232 -m build/diagnostics/gateware/diagnostics.bit
 ```
+
+A reload is also the cheap first move when a *running* design has wedged rather than the
+board: a latched fault — a lost verdict, a saturated queue, anything the gateware
+deliberately does not clear — survives every host-side write and clears on the next `-m`.
+Reach for that before reaching for the power switch, and before concluding the board is
+locked out; a real §3a lockout does not come back from an SRAM load.
 
 Only write flash once a bitstream is known good, since a bad one comes back after every
 power cycle:
