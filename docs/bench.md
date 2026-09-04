@@ -13,7 +13,7 @@ board itself is described in [`board.md`](board.md).
 | Colorlight 5A-75B, **rev 8.2** | The target | Also fine: 8.0, 7.0. Avoid 6.1 — its second Ethernet port is mis-pinned upstream ([`board.md`](board.md) §5) |
 | 5 V PSU, ≥ 2 A, **5.5 V absolute maximum** | Board power | See §3 |
 | FT232H breakout | Loading bitstreams | MPSSE JTAG, 3.3 V, driven natively by openFPGALoader; §4. An FT2232H, Tigard or Digilent HS2 works the same way |
-| 3.3 V USB-UART adapter | Console | CP2102, FT232R or CH340 **switched to 3.3 V** |
+| 3.3 V USB-UART adapter | Console | CP2102, FT232R, CH340 or CH9102 — **3.3 V logic, not 5 V**. §5 is verified with a WCH CH9102-class `1a86:55d3`, which binds `cdc_acm` and so appears as `/dev/ttyACM*`, not `/dev/ttyUSB*` |
 | ~470 Ω resistor | Protects the UART adapter | See §5 — the button shares the UART RX net |
 | 2 spare Ethernet NICs | Traffic either side of the board | Onboard + USB3 GbE is fine; they must be free of production traffic |
 | 2 Ethernet patch cables | Host ↔ board | Cat5e or better |
@@ -178,12 +178,23 @@ with the status LED and the button:
 | GND | — | — | — | — | GND |
 
 The rev 8.x row is what `litex_boards` puts in `serial` for both 8.0 and 8.2 — `tx` `T6`
-"led (J19 DATA_LED-)", `rx` `R7` "btn (J19 KEY+)" — and it is not contradicted by anything
-measured on the board: with the ECP5's own pull-ups off, both pins idle high, drive low
-independently, and differ in pull-up strength in the direction the LED-versus-10 kΩ topology
-predicts ([`board.md`](board.md) §7). **What has never been done is a console round trip.**
-Until one is, treat the direction and the workable baud rates as unverified: gateware built
-from that table has never had a character through it.
+"led (J19 DATA_LED-)", `rx` `R7` "btn (J19 KEY+)". **That table is correct, and it has now
+been tested rather than assumed.** On a rev 8.2 board, a CPU-less gateware echo that can
+exchange TX and RX at runtime:
+
+| Measurement | Result |
+| --- | --- |
+| Echo at 115200, documented direction | **8192/8192 bytes byte-for-byte**; no drops, no corruption, no framing errors, no overflows |
+| Echo with TX and RX exchanged | Nothing returned; the board framed **zero** bytes. The documented direction is the only one that works |
+| Host → board alone, transmitter released | 4096/4096 bytes framed, 0 framing errors |
+| Board → host alone, free-running pattern | Every byte delivered, every byte correct |
+| 9600, 19200, 38400, 57600, 115200 | **All five pass byte-for-byte**, 2048 bytes each. No rate-dependent failure on rev 8.x |
+| Sustained, idle bench | **1 642 496 bytes echoed with zero errors of any kind** across three runs |
+| `T6` driven, operator watching | The status LED lights. `T6` is `DATA_LED-` |
+| Button pressed, both pins sampled | `R7` goes low, four for four, hold times 336–430 ms; **`T6` records zero transitions**. `R7` is `KEY+` |
+
+Both halves of the pin identity are therefore settled physically, not just electrically, and
+the console works at every baud rate the firmware offers.
 
 ```
    USB-UART (3.3 V)                board J19 / rev 8.2 pins
@@ -207,41 +218,80 @@ Three consequences of sharing those pins, all design constraints rather than bug
 
 * **Put ~470 Ω in series with the adapter's TXD.** `KEY+` is the button net, pulled up with
   10 kΩ and shorted to ground when the button is pressed. Without the resistor, pressing
-  the button while the adapter drives the line high shorts its output driver.
-* **Pressing the button injects a break onto UART RX.** Treat the button as unusable.
-* **The status LED flickers with console traffic** and cannot be used as an indicator. On
-  rev 6.1 the capacitance on `KEY+` also limits the link to 9600 baud; rev 7.0 and later
-  run at 115200. Design console output to be readable at 9600: no banners, no box drawing,
-  fixed-width one-line records.
+  the button while the adapter drives the line high shorts its output driver. Gateware
+  should also drive both J19 pins **open-drain** — output value tied low, output enable
+  following the inverted data bit — so no assignment of TX and RX can source current into a
+  pressed button. The pull-ups are fast enough that this costs nothing: measured rise times
+  are 19 ns on `T6` and 29 ns on `R7`, some 300× shorter than a 115200 bit time.
+* **Pressing the button asserts a break on UART RX, and the cost is the bytes in flight.**
+  Measured against a zero-error baseline: 12 trials that overlapped a press lost **3.39%**
+  of their bytes (1668 of 49 152), while 131 untouched trials in the same run lost **0 of
+  536 576**. What a press does *not* do is inject characters — the receiver rejects the
+  break as a framing error because the stop bit is low, so the whole disturbance across all
+  presses was **9 framing errors and 3 spurious bytes**. The link recovers by itself the
+  moment the button is released; nothing needs resetting. Treat the button as unusable
+  during console work, but as a nuisance that costs data rather than one that forges it.
+  A press held ~300 ms destroys whatever the host sends during those 300 ms — about 3.4 kB
+  at 115200 for a free-running console.
+* **The status LED is a usable *activity* indicator and an unusable *status* indicator.**
+  It is **solid while traffic runs and off when it stops**, not flickering: a continuous
+  `0x00` at 115200 holds the line low for 9 of every 11 bit times, so ~82% duty at ~10.5 kHz
+  — far above flicker fusion, which is why it integrates to a steady glow. The same pattern
+  at 9600 is ~880 Hz, still fused but visibly dimmer for the same duty. Predict any rate
+  from that: fused at every baud the firmware offers, brightness tracking duty cycle. The
+  LED cannot report state while the CLI owns the pin, but "traffic or no traffic" reads off
+  it at a glance.
+* On rev 6.1 the capacitance on `KEY+` limits the link to 9600 baud; **rev 7.0 and later run
+  at 115200, confirmed on 8.2 above.** Design console output to be readable at 9600 anyway:
+  no banners, no box drawing, fixed-width one-line records.
 
-Use the stable path, not `/dev/ttyUSB0`, which moves on replug:
+Use the stable `by-id` path, never `/dev/ttyUSB0` or `/dev/ttyACM0`, which move on replug
+and differ by adapter chip — a CP2102 or FT232R binds `ftdi_sio`/`cp210x` and lands on
+`ttyUSB*`, while a CH9102 binds `cdc_acm` and lands on `ttyACM*`. List them rather than
+assuming, so this survives a change of adapter or of host:
 
-```
-picocom -b 115200 /dev/serial/by-id/usb-Silicon_Labs_CP2102_...-if00-port0
+```sh
+ls -l /dev/serial/by-id/          # pick yours; the FT232H JTAG cable is also listed here
+picocom -b 115200 /dev/serial/by-id/usb-1a86_USB_Single_Serial_<serial>-if00
 ```
 
 ### 5a. The console adapter is not optional, and the FT232H cannot stand in for it
 
-A bench with a soldered FT232H and no second adapter can do everything in §5b and §6 and
-still not answer one question about J19, because there is nothing on the other end of those
-two pins. That is worth stating plainly, because the JTAG side working makes the rig look
-complete: `openFPGALoader --scan-usb` lists a `0403:6014`, `/dev/ttyUSB0` appears when
-`ftdi_sio` binds it, and neither means a console exists. The FT232H's UART and its MPSSE
-JTAG are exclusive modes of one channel (§4), and on a wired rig that channel is on J27–J34,
-not J19.
+The console in §5 is proven, but it took a second adapter to prove it. A bench with a
+soldered FT232H and nothing else can do everything in §5b and §6 and still answer no
+question about J19, because there is nothing on the other end of those two pins. That is
+worth stating plainly, because the JTAG side working makes the rig look complete:
+`openFPGALoader --scan-usb` lists a `0403:6014`, a tty appears when `ftdi_sio` binds it, and
+neither means a console exists. The FT232H's UART and its MPSSE JTAG are exclusive modes of
+one channel (§4), and on a wired rig that channel is on J27–J34, not J19.
 
-Without an adapter, gateware can still prove some of J19 — that both pins exist, are
+Without an adapter, gateware alone gets as far as showing that both pins exist, are
 independently drivable, and carry external pull-ups of the expected relative strength
-([`board.md`](board.md) §7) — and the board's own LED and button close the rest by eye:
+([`board.md`](board.md) §7). It cannot get further, and the gap is not academic: pull-up
+strength is consistent with the pinout but does not name the nets, and nothing on the board
+proves a byte ever crossed.
 
-```sh
-# TX: hold T6 low and the status LED should light. RX: press the button and R7 alone
-# should go low, which a sticky latch catches without anyone watching the register.
-```
+**How §5's numbers were taken, if they need repeating.** One CPU-less `SoCMini` does all of
+it, with the two things that could be wrong made runtime CSRs rather than build parameters,
+so no hypothesis costs a rebuild:
 
-Those two 30-second checks and one loopback at 115200 are the difference between a pinout
-copied from `litex_boards` and a console known to work. Do them before writing firmware that
-prints.
+* `sys` from `OSCG`, not `clk25`, so the design is alive whatever the PHYs are doing, and
+  `R6` and the `eth` pads are never requested (§3a).
+* A `swap` register that exchanges TX and RX between `T6` and `R7`. Testing the pin table
+  against its own inverse is the whole point; a build parameter makes that a 20-minute
+  round trip and a register makes it a millisecond.
+* A `tuning_word` register — LiteX's `with_dynamic_baudrate` phase accumulator — programmed
+  from `f_sys` **measured against `clk25`**, never from the `OSCG` nominal. `OSCG`'s divider
+  table is not a plain division: `DIV=2` measures 103.1 MHz against a 155 MHz nominal, which
+  would be instantly fatal to a UART, while `DIV=4` measures 77.55 MHz against 77.5 MHz.
+  Measure the timebase; do not trust it.
+* Counters for framed bytes, framing errors, transmitted bytes and FIFO overflows, so a
+  silent link says *why* it is silent — whether the board heard nothing, or heard edges it
+  could not frame, or heard fine and could not answer.
+
+The two physical checks still need a person, and they are the ones that name the nets: drive
+`T6` and watch the status LED, then press the button and watch which pin falls. Both are
+recorded in [`board.md`](board.md) §7.
 
 ## 5b. Before the Ethernet adapters arrive
 
@@ -276,6 +326,25 @@ that runs the whole FPGA. See §3a.
 
 A single cable from any spare host port into P0 is also enough to confirm one PHY links up
 and auto-negotiates.
+
+### 5c. Two ways to measure this wrong
+
+Both of these produce confident, reproducible, entirely false numbers, and both cost real
+time to find.
+
+**A CSR write over jtagbone lands ~41 ms after the host issues it.** That is long enough to
+race data already on the wire. A host-side sequence of "clear the counters, then send" does
+not do what it reads like: the clear lands tens of milliseconds into the transfer and zeroes
+the count mid-flight. It presented here as a stable, repeatable *11.6% of bytes lost
+inbound* — and the deficit was a constant ~476 bytes whatever the payload size, which is the
+tell, because a real loss mechanism scales with the traffic and a fixed time offset does not.
+A 512-byte transfer "lost" 478 of 512; a 4096-byte transfer "lost" 474 of 4096. **Difference
+two counter reads instead of clearing.** A late read is merely late; a late clear is a lie.
+
+**LiteX's RS232 TX frames 11 bit times per byte, not 10** — one start, eight data, and
+**two** stop bits. Any duration, throughput or duty-cycle figure computed at 10 bits per byte
+is ~10% wrong, which is small enough to look like a real effect and be chased. It also sets
+the LED duty cycle in §5: a continuous `0x00` is low for 9 of 11 bit times, not 8 of 10.
 
 ## 6. Ethernet and the test rig
 
@@ -424,6 +493,30 @@ docker run --rm --privileged -v /dev/bus/usb:/dev/bus/usb -v "$PWD:/work" reefer
 
 `openFPGALoader` and the bridge both want the FT232H exclusively, so load the bitstream
 before starting the bridge, in a separate invocation.
+
+**The console adapter needs the same treatment, and one more mount.** Measuring J19 means
+holding both links at once — jtagbone for the counters and the serial adapter for the wire —
+so put them in one container and mount `/dev` as well as `/dev/bus/usb`:
+
+```sh
+docker run -d --name rig --privileged \
+  -v /dev:/dev -v /dev/bus/usb:/dev/bus/usb -v "$PWD:/work" -w /work reefervole \
+  sh -c 'python3 tools/jtagbone_server.py >/dev/null 2>&1; sleep infinity'
+docker exec rig python3 your_console_probe.py
+```
+
+**A container's `/dev` is a tmpfs snapshot taken when the container starts, and
+`--privileged` does not change that.** An adapter plugged in afterwards never appears inside
+a running container, however privileged it is, and a process without `CAP_MKNOD` cannot
+create the node by hand — so this reads as "the adapter is not there" when it is plugged in,
+enumerated, and visible to `lsusb` and `/sys` on the host. Two ways out: have the adapter
+plugged in **before** the container starts, or reach it from a **nested privileged container
+started after the hotplug**, which takes its own fresh snapshot of the host's `/dev`.
+
+Refer to the adapter by its `/dev/serial/by-id/` path inside the container as well. The
+`ttyACM*`/`ttyUSB*` number is a property of the host, the enumeration order and the
+adapter's chip — not of the adapter — and none of those survive moving the rig to another
+machine.
 
 ## 7. Host software
 

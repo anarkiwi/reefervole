@@ -246,9 +246,29 @@ and does nothing else:
 | Rise after release, 64 samples, 9.709 ns cycles | `T6` = 2 cycles, `R7` = 3, no variance | Two of those cycles are the input synchroniser and cancel, so **`R7`'s pull-up is the weaker of the two** — the direction expected if `R7` is `KEY+`'s 10 kΩ and `T6` the LED's much smaller series resistance |
 | Both again with `PULLMODE=DOWN` | unchanged | Both external pull-ups beat the ECP5's internal pull-down comfortably |
 | Sticky low-detect, 600 s idle | neither pin ever went low | The nets are quiet at rest. Whatever the button and the LED cost the console, spontaneous noise on RX is not one of them |
+| **Operator watching the LED while `T6` is driven** | LED **solid** during traffic, off during silence, following a 5 s on / 5 s off pattern | **`T6` is `DATA_LED-`.** Not merely a drivable net that happens to be soldered to the adapter's RXD |
+| **Operator pressing the button, both pins sampled** | `R7` low four times out of four, held 336–430 ms; **`T6` zero transitions** | **`R7` is `KEY+`.** The sticky latch agrees independently: `seen_low` `T6=0 R7=1` |
+| Console echo, documented direction | 8192/8192 bytes byte-for-byte at 115200 | The pin table is right, and characters cross in both directions |
+| Console echo, TX and RX exchanged | nothing returned; board framed zero bytes | The documented direction is the only one that works |
 
-That is consistent with the pinout above and rules out a swapped or dead pin, but it does
-not by itself prove which net is which: the two decisive observations are physical. Hold
-`T6` low and the status LED should light; press the button and `R7` alone should go low.
-Neither had been done when this was written, nor had any console round trip — see
-[`bench.md`](bench.md) §5 for what that costs and how to close it.
+The electrical readings rule out a swapped or dead pin but cannot by themselves name the
+nets; the two decisive observations are physical, and **both have now been made.** Driving
+`T6` lights the status LED, and pressing the button pulls `R7` down while `T6` does not
+move — four presses, four clean `R7` cycles, no `T6` transition in the entire watch. A
+console round trip has also been done, in both directions and at every baud rate the
+firmware offers ([`bench.md`](bench.md) §5).
+
+**The pinout above was correct as written.** Nothing in it needed changing — which is worth
+recording, because the alternative outcome would have been recorded loudly and the next
+person otherwise cannot tell a table that was verified from one that was merely copied out
+of `litex_boards`.
+
+What the shared pins actually cost, measured rather than estimated: a button press asserts a
+break that destroys the bytes in flight during the press — 3.39% of bytes in trials that
+overlapped one, against 0 errors in 536 576 bytes in trials that did not — but injects
+almost nothing, because the receiver rejects the break as a framing error rather than
+delivering a character. Across every press in that run the total spurious input was **9
+framing errors and 3 bytes**, and the link recovered by itself each time. The LED runs
+**solid, not flickering**, at any baud rate the firmware uses, so it reads as an activity
+indicator even though it cannot serve as a status one. Details and the duty-cycle reasoning
+are in [`bench.md`](bench.md) §5.
