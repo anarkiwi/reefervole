@@ -12,6 +12,7 @@ vendor licence, an account, or a Windows VM.
 | Board pinout | `litex-boards` | pip, pinned to git SHAs |
 | Soft CPU | VexRiscv (`pythondata-cpu-vexriscv`) | pip, pinned to git SHAs |
 | SDRAM controller | LiteDRAM | pip, pinned to git SHAs |
+| Memory-mapped SPI flash | LiteSPI (`litespi`) | pip, pinned to git SHAs |
 | Synthesis | yosys `synth_ecp5` | oss-cad-suite |
 | Place and route | nextpnr-ecp5 | oss-cad-suite |
 | Bitstream pack | prjtrellis `ecppack` | oss-cad-suite |
@@ -25,9 +26,18 @@ with in-band link status and 10/100/1000 support, plus a MAC core that handles p
 FCS, padding, inter-frame gap, the clock-domain crossing and 8↔32-bit width conversion;
 `litex-boards` already carries the 5A-75B pinout. Re-deriving any of that is pure re-work.
 Everything upstream is used as-is — `LiteEthPHYRGMII`, `LiteEthMACCore`,
-`litex.soc.interconnect.stream`, VexRiscv, the LiteX UART/timer/SPI-flash cores and
+`litex.soc.interconnect.stream`, VexRiscv, the LiteX UART and timer cores and
 `litex.build`'s ECP5 DDR primitives — with board-specific parameters from
 [`board.md`](board.md) §4.
+
+**Why LiteSPI is a separate pin.** `litex.soc.cores.spi_flash` carries only CSR-driven
+masters (`S7SPIFlash`, `USSPIFlash`, `ECP5SPIFlash`); nothing there reaches a bus. The
+memory-mapped core is LiteSPI's, and `SoC.add_spi_flash` imports it lazily, so without the
+pin the method raises `ImportError` rather than reporting a missing dependency. A mapped
+flash region is what lets a design execute firmware in place instead of holding it in block
+RAM — the deciding constraint on a 25K-class ECP5, where an image of a few tens of KB
+exceeds any ROM the EBR budget can spare. `tests/test_spi_flash.py` gates the capability by
+building a 5A-75B SoC and asserting the region exists, rather than by importing the package.
 
 **Two simulators, on purpose.** Migen's native simulator runs pure-Python generator
 testbenches against migen modules with no compile step, which is what makes per-block unit

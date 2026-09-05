@@ -1,6 +1,6 @@
 PYTHON ?= python3
 LITEX_REPOS := m-labs/migen enjoy-digital/litex enjoy-digital/liteeth \
-               enjoy-digital/litedram litex-hub/litex-boards \
+               enjoy-digital/litedram litex-hub/litex-boards litex-hub/litespi \
                litex-hub/pythondata-cpu-vexriscv
 
 .PHONY: lint test docs check update-litex
