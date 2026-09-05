@@ -26,7 +26,7 @@ RUN curl -fsSL -o /tmp/rv.tar.gz \
 # --- Stage 3: runtime ------------------------------------------------------------------
 # Bookworm-based so the oss-cad-suite binaries find the glibc they were built against,
 # but pinned to the Python the project requires rather than the 3.11 bookworm ships.
-FROM python:3.12-slim-bookworm
+FROM python:3.14-slim-bookworm
 RUN apt-get update && apt-get install -y --no-install-recommends \
       git make libtinfo6 libffi8 libreadline8 libgomp1 zlib1g ca-certificates \
     && rm -rf /var/lib/apt/lists/*
