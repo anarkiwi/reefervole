@@ -49,6 +49,9 @@ limit is 5.5 V and a 12 V LED-panel supply destroys it immediately.
 | `tools/bench_check.py` | One-shot probe of a bench rig; standard library only |
 | `tools/phy_probe.py` | Read-only MDIO scan, RGMII delay straps and `clk25`, over jtagbone |
 | `tools/bench_netns.sh` | Two-namespace NIC test rig, setup and complete undo |
+| `tools/seed_sweep.py` | One synthesis, N placer seeds in parallel; Fmax distribution per clock, exit 1 on a miss |
+| `tools/sweep_compare.py` | Paired sign-flip permutation test between two sweeps |
+| `tools/fmax_probe.py` | One module's register-to-register Fmax, alone on the device |
 | `Dockerfile` | Multistage image: oss-cad-suite, RISC-V GCC, pinned Python deps |
 
 ## Docs
@@ -58,6 +61,8 @@ limit is 5.5 V and a 12 V LED-panel supply destroys it immediately.
 | [`docs/board.md`](docs/board.md) | The board as a development target: revisions, pinouts, the rev 8.x clock and reset hazards, `LiteEthPHYRGMII` parameters, clocking |
 | [`docs/bench.md`](docs/bench.md) | Power limits, FT232H JTAG wiring, the J19 console, the two-NIC test rig, loading bitstreams |
 | [`docs/toolchain.md`](docs/toolchain.md) | yosys / nextpnr / prjtrellis / LiteX flow, container layout, measuring fabric cost, the `DP16KD` width trap |
+| [`docs/timing.md`](docs/timing.md) | Closing timing on the ECP5: seed sweeps as measurement, block RAM and late-signal rules, what LiteEth costs, the PLL ladder, clock-domain seams, LiteX pitfalls |
+| [`docs/formal.md`](docs/formal.md) | SymbiYosys over migen gateware: running it in the image, harness patterns, the signal-naming trap |
 
 ## Licence
 

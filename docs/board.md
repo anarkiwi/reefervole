@@ -201,12 +201,14 @@ One PLL from the 25 MHz reference, VCO at 750 MHz:
 | Domain | Frequency | Source |
 | --- | --- | --- |
 | `sys` | 62.5 MHz (750/12) | PLL |
-| `net` | 125 MHz (750/6) | PLL — a 32-bit datapath here carries 4 Gb/s |
+| `net` | 57.69 MHz (750/13) | PLL — a 32-bit datapath here carries 1.85 Gb/s per port; 125 MHz (750/6) is arithmetically attractive and does not close with a 32-bit LiteEth MAC on the `-7` part ([`timing.md`](timing.md) §3) |
 | `sys_ps` | 62.5 MHz, 180° | PLL, SDRAM PHY only |
 | `eth0_rx`, `eth1_rx` | 125 / 25 / 2.5 MHz | each PHY's recovered RX clock; **stops** when that PHY is isolated |
 | `eth0_tx`, `eth1_tx` | derived | RGMII TX, `DELAYG` tap-tuned |
 
-The second PLL is spare. **System reset must be held by PLL lock**, because on rev 8.x
+The first PLL has two outputs to spare — an `EHXPLLL` has four — and the second PLL is
+unused; a domain that needs a faster clock than `net` can close at takes one of them
+([`timing.md`](timing.md) §4). **System reset must be held by PLL lock**, because on rev 8.x
 `clk25` does not exist until PHY1 starts.
 
 **Do not add your own `AsyncResetSynchronizer` for a PLL-derived domain.**

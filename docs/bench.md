@@ -508,6 +508,10 @@ docker run --rm --privileged -v /dev/bus/usb:/dev/bus/usb -v "$PWD:/work" reefer
 
 `openFPGALoader` and the bridge both want the FT232H exclusively, so load the bitstream
 before starting the bridge, in a separate invocation.
+The bridge's `openocd` ignores `SIGTERM` inside its `jtagstream_serve` loop and shows in
+`ps` as `ld-linux-x86-64.so.2 … openocd`, so `pkill -x openocd` misses it: find it by
+`grep openocd /proc/*/cmdline` and `kill -9` it, or `openFPGALoader` reports `unable to
+claim usb device` until you do.
 
 **The console adapter needs the same treatment, and one more mount.** Measuring J19 means
 holding both links at once — jtagbone for the counters and the serial adapter for the wire —
@@ -532,6 +536,63 @@ Refer to the adapter by its `/dev/serial/by-id/` path inside the container as we
 `ttyACM*`/`ttyUSB*` number is a property of the host, the enumeration order and the
 adapter's chip — not of the adapter — and none of those survive moving the rig to another
 machine.
+
+### 6.5 Sourcing minimum-size frames at line rate
+
+A gigabit link carries 1.488 Mpps of 64-byte frames, and whether a design's per-frame
+budget holds is only measurable at that rate. What the generators reach on an Intel i350
+(`igb`) from inside the namespace, one direction, measured on the NIC's own `tx_packets`:
+
+| Generator | Rate | Why |
+| --- | --- | --- |
+| `tcpreplay -K --topspeed`, one process | 370 kpps | one `sendto` per frame |
+| four `tcpreplay` in parallel | ~1 Mpps aggregate | still syscall-bound; it does not reach the wire |
+| kernel `pktgen` | — | its IPv6 minimum is **78 bytes** (a 16-byte `pktgen_hdr` is mandatory), so it cannot send a 64-byte frame at all |
+| `trafgen` (netsniff-ng), 8 forks | **1.44–1.46 Mpps** | mmap'd `TX_RING`, one flush per ring |
+
+USB3 adapters (AX88179) top out near 216 kpps whatever drives them. Use `trafgen`:
+
+```sh
+apt-get install -y netsniff-ng                      # in the rig container
+ip netns exec bsw-a trafgen --in min64.trafgen --out eno3 --cpus 8 -Q -n 5000000
+```
+
+The config is a byte list. A 64-byte IPv6 frame is 60 bytes built — 14 Ethernet, 40 IPv6
+with next header **59** (no next header) and a 6-byte payload; UDP cannot get below 62.
+Write no comments in the file: `trafgen` runs it through `cpp`, which the container does
+not have, and a `/*` is then a syntax error. Do not pass `--qdisc-path` on `igb`: the
+bypass flushes fail with `Resource temporarily unavailable` after a thousand frames.
+`-Q` keeps it from moving the NIC's IRQ affinity.
+
+**Both directions at once, the host is the ceiling.** Two ports of one i350 driven together
+reach ~950 kpps each, whatever CPU set each `trafgen` is pinned to, because each port is
+also *receiving* the other's forwarded frames at line rate. A per-direction claim is made
+one direction at a time; a both-directions run at 64 % is still a strong independence
+check when the two directions are meant to share nothing.
+
+Loading `pktgen` for anything else: the reefervole image has no `modprobe`, but
+`docker run --rm --privileged --net=host -v /lib/modules:/lib/modules:ro alpine:3 modprobe
+pktgen` inserts the host's module, and `/proc/net/pktgen` then appears in every namespace.
+
+### 6.6 jtagbone writes with a CPU running
+
+On a design with a CPU on the same bus, jtagbone **writes** can wedge the bridge while the
+CPU runs — about twenty CSR writes, or two into one particular region, was enough on one
+design. Afterwards every access returns zero: `ctrl_scratch` reads `0x0` instead of
+`0x12345678`, `inband_status` reads `0x00` while the CPU's own MDIO reports link, and
+nothing but reconfiguring the FPGA clears it. Restarting the bridge does not; slowing the
+adapter clock does not. Reads are unaffected at any volume.
+
+It looks exactly like §6.3's loose cable and like a board that has seen no frames, and it
+silently zeroes every counter a bench run reads. So:
+
+* read `ctrl_scratch` and require `0x12345678` before believing any counter, and again
+  after a run that wrote anything;
+* for anything that writes over jtagbone on a CPU build, hold the CPU in reset for the
+  duration (LiteX `ctrl_reset` bit 1: write `2`, work, write `0`) — hundreds of writes then
+  land; stage anything the firmware would reload from flash *after* the release, because
+  releasing the CPU reboots it;
+* prefer a CPU-less build for bench work that only needs counters.
 
 ## 7. Host software
 
