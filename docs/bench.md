@@ -360,6 +360,9 @@ sudo tools/bench_netns.sh status
 sudo tools/bench_netns.sh down               # returns both NICs to the host
 ```
 
+The project image carries the tooling this needs, so the script runs inside it as well as
+on the host — see §6.4 for the invocation.
+
 It creates namespaces `bsw-a` and `bsw-b`, disables RA and autoconf on each interface, and
 assigns `2001:db8:1::1/64` and `2001:db8:1::2/64`. The equivalent by hand:
 
@@ -468,11 +471,23 @@ interfaces return to the host when the namespaces are deleted, so a single conta
 lives as long as the test is the whole story:
 
 ```sh
-docker run -d --name rig --net=host --privileged -v "$PWD:/rv" alpine:3 \
-  sh -c 'apk add -q iproute2 iputils iperf3; sh /rv/tools/bench_netns.sh up nic-a nic-b; sleep 3600'
-docker exec rig sh /rv/tools/bench_netns.sh ping
-docker exec rig sh /rv/tools/bench_netns.sh down && docker rm -f rig
+docker run -d --name rig --net=host --privileged -v "$PWD:/work" -w /work reefervole \
+  sh -c 'tools/bench_netns.sh up nic-a nic-b; sleep 3600'
+docker exec rig tools/bench_netns.sh ping
+docker exec rig tools/bench_netns.sh status
+docker exec rig tools/bench_netns.sh down && docker rm -f rig
 ```
+
+The image ships `iproute2`, `procps`, `iputils-ping`, `ethtool` and `iperf3`, so nothing is
+installed at run time and the rig is the same on every host. `--net=host` is what makes the
+physical NICs visible to move, and `--privileged` supplies `CAP_NET_ADMIN` and the writable
+`/run/netns` that `ip netns add` mounts over. `--cap-add=NET_ADMIN` alone is not enough: it
+fails at `mount --make-shared /var/run/netns failed: Operation not permitted`, before any
+interface is touched.
+
+`ip netns` state lives in the container's own mount namespace, so only `docker exec` into
+**that** container sees the namespaces. A second container started later, however
+privileged, sees an empty `ip netns list` — which reads as "the script did nothing".
 
 Run `down` before removing the container. Killing it also frees the namespaces and returns
 the interfaces, but leaves nothing to read if the test was still running.
