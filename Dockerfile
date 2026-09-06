@@ -26,7 +26,7 @@ RUN curl -fsSL -o /tmp/rv.tar.gz \
 # --- Stage 3: runtime ------------------------------------------------------------------
 # Bookworm-based so the oss-cad-suite binaries find the glibc they were built against,
 # but pinned to the Python the project requires rather than the 3.11 bookworm ships.
-FROM python:3.12-slim-bookworm
+FROM python:3.14-slim-bookworm
 # Bench rig on the second line: tools/bench_netns.sh calls ip, sysctl and ping, and a NIC
 # moved into a namespace is only reachable from inside it, so the ethtool and iperf3 steps
 # of docs/bench.md §6 have to run in here too.
