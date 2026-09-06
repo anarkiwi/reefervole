@@ -27,8 +27,12 @@ RUN curl -fsSL -o /tmp/rv.tar.gz \
 # Bookworm-based so the oss-cad-suite binaries find the glibc they were built against,
 # but pinned to the Python the project requires rather than the 3.11 bookworm ships.
 FROM python:3.12-slim-bookworm
+# Bench rig on the second line: tools/bench_netns.sh calls ip, sysctl and ping, and a NIC
+# moved into a namespace is only reachable from inside it, so the ethtool and iperf3 steps
+# of docs/bench.md §6 have to run in here too.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       git make libtinfo6 libffi8 libreadline8 libgomp1 zlib1g ca-certificates \
+      ethtool iperf3 iproute2 iputils-ping procps \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=fpga-tools  /opt/oss-cad-suite /opt/oss-cad-suite
 COPY --from=riscv-tools /opt/riscv         /opt/riscv
@@ -47,3 +51,9 @@ ENV PYTHONPATH=/work
 # The bind-mounted repo is owned by the host user, not by root in this container.
 RUN git config --system --add safe.directory /work
 WORKDIR /work
+
+# Last, so it never invalidates a dependency layer. oss-cad-suite puts 150+ binaries ahead
+# of /usr/sbin, so "apt installed it" and "the bench tooling can call it" are different
+# claims; CI's image build asserts the second.
+RUN for c in ethtool id ip iperf3 ping sed sysctl; do command -v "$c" >/dev/null \
+      || { echo "missing bench tool: $c" >&2; exit 1; }; done
