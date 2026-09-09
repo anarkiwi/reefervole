@@ -1,5 +1,5 @@
 # Runtime and verification dependencies. Tracked by Dependabot.
-numpy==2.5.2
+numpy==2.5.3
 cocotb==2.1.0
 cocotb-bus==0.3.0
 pytest==9.1.1
