@@ -5,7 +5,7 @@ cocotb-bus==0.3.0
 pytest==9.1.1
 pytest-xdist==3.8.0
 pytest-cov==7.1.0
-hypothesis==6.168.0
+hypothesis==6.168.3
 scapy==2.7.0
 black==26.5.1
 pylint==4.0.8
