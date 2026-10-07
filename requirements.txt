@@ -8,4 +8,4 @@ pytest-cov==7.1.0
 hypothesis==6.168.0
 scapy==2.7.0
 black==26.5.1
-pylint==4.0.8
+pylint==4.1.2
